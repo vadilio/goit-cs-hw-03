@@ -1,0 +1,3 @@
+
+перейдіть у папку task-manager-db
+docker-compose up -d

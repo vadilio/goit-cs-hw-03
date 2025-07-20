@@ -1,0 +1,5 @@
+FROM postgres:15
+
+ENV POSTGRES_USER=dbuser1
+ENV POSTGRES_PASSWORD=userpass_1
+ENV POSTGRES_DB=task_manager_db

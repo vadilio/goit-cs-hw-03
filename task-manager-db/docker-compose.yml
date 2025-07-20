@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  db:
+    build: .
+    container_name: task_pg
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: dbuser1
+      POSTGRES_PASSWORD: userpass_1
+      POSTGRES_DB: task_manager_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
