@@ -1,0 +1,3 @@
+Для створеня контейнеру з MongoDB:
+перейдіть у папку db_Mongo
+docker-compose up -d
