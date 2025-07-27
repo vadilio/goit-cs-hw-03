@@ -1,192 +1,262 @@
 from pymongo import MongoClient
-from bson.objectid import ObjectId
+from pymongo.errors import OperationFailure, DuplicateKeyError
 from faker import Faker
+from dotenv import load_dotenv
 import pprint
 import random
 import sys
+import os
+from init_db import initdb
 
-# Ініціалізація Faker
 faker = Faker("en_US")
+load_dotenv()
 
-# Спроба підключення до MongoDB з перевіркою
+MONGO_HOST = os.getenv("MONGO_HOST", "localhost")
+MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
+MONGO_DB = os.getenv("CAT_DB", "cat_database")
+MONGO_USER = os.getenv("CAT_USER")
+MONGO_PASS = os.getenv("CAT_PASS")
+CAT_COLLECTION = os.getenv("CAT_COLLECTION", "cats")
+
+# Підключення до MongoDB з базовою перевіркою з’єднання
+if MONGO_USER and MONGO_PASS:
+    mongo_uri = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_HOST}:{MONGO_PORT}/{MONGO_DB}"
+else:
+    mongo_uri = f"mongodb://{MONGO_HOST}:{MONGO_PORT}/{MONGO_DB}"
 try:
-    client = MongoClient("mongodb://localhost:27017/",
-                         serverSelectionTimeoutMS=2000)
+    client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
     client.server_info()
 except Exception as e:
     print(f"Помилка підключення до MongoDB: {e}")
     sys.exit(1)
 
-# Вибір бази та колекції
-db = client["cat_database"]
-collection = db["cats"]
+db = client[MONGO_DB]
+collection = db[CAT_COLLECTION]
 
 FEATURE_POOL = [
-    "любить рибу", "боїться пилососа", "ходить по клавіатурі",
-    "муркоче голосно", "стрибає високо", "любить спати",
-    "грається з клубком ниток", "шипить на гостей", "просить їжу",
-    "лізе в коробки", "треться об ноги"
+    "likes fish", "fears vacuum", "walks on keyboard",
+    "purrs loudly", "jumps high", "sleeps often",
+    "plays with yarn", "hisses at guests", "begs for food",
+    "crawls into boxes", "rubs against legs"
 ]
 
 
+def safe_run(func):
+    """Обгортка для перехоплення помилок авторизації MongoDB"""
+    try:
+        func()
+    except OperationFailure as e:
+        print(f"Помилка авторизації: {e}")
+
+
 def print_all_cats():
-    print("Всі коти у базі:")
+    print("All cats in the database:")
     cats = list(collection.find())
     if not cats:
-        print("📭 База порожня.")
+        print("The database is empty.")
         return
     for cat in cats:
-        name = cat.get("name", "Невідомо")
-        age = cat.get("age", "Невідомо")
+        name = cat.get("name", "Unknown")
+        age = cat.get("age", "Unknown")
         features = ", ".join(cat.get("features", []))
-        print(f"🐈 Ім'я: {name} | Вік: {age} | Характеристики: {features}")
+        print(f"Name: {name} | Age: {age} | Features: {features}")
 
 
 def find_cat_by_name():
-    name = input("Введіть ім’я кота: ").strip()
+    name = input("Enter cat's name: ").strip()
     if not name:
-        print("Ім’я не може бути порожнім.")
+        print("Name cannot be empty.")
         return
     cat = collection.find_one(
         {"name": {"$regex": f"^{name}$", "$options": "i"}})
     if cat:
         pprint.pprint(cat)
     else:
-        print("Кота з таким ім’ям не знайдено.")
+        print("No cat found with that name.")
 
 
 def update_cat_age():
-    name = input("Введіть ім’я кота для оновлення віку: ").strip()
+    name = input("Enter the name of the cat to update age: ").strip()
     if not name:
-        print("Ім’я не може бути порожнім.")
+        print("Name cannot be empty.")
         return
-    new_age = input("Введіть новий вік: ").strip()
+    new_age = input("Enter new age: ").strip()
     if not new_age.isdigit() or not (0 < int(new_age) < 50):
-        print("Вік повинен бути числом від 1 до 49.")
+        print("Age must be a number between 1 and 49.")
         return
     result = collection.update_one(
         {"name": {"$regex": f"^{name}$", "$options": "i"}},
         {"$set": {"age": int(new_age)}}
     )
     if result.matched_count:
-        print("Вік оновлено.")
+        print("Age updated.")
     else:
-        print("Кота не знайдено.")
+        print("No cat found.")
 
 
 def add_feature_to_cat():
-    name = input(
-        "Введіть ім’я кота для додавання нової характеристики: ").strip()
+    name = input("Enter the name of the cat to add feature: ").strip()
     if not name:
-        print("Ім’я не може бути порожнім.")
+        print("Name cannot be empty.")
         return
-    new_feature = input("Введіть нову характеристику: ").strip()
+    new_feature = input("Enter new feature: ").strip()
     if not new_feature:
-        print("Характеристика не може бути порожньою.")
+        print("Feature cannot be empty.")
         return
     result = collection.update_one(
         {"name": {"$regex": f"^{name}$", "$options": "i"}},
         {"$addToSet": {"features": new_feature}}
     )
     if result.matched_count:
-        print("Характеристика додана.")
+        print("Feature added.")
     else:
-        print("Кота не знайдено.")
+        print("No cat found.")
 
 
 def delete_cat_by_name():
-    name = input("Введіть ім’я кота для видалення: ").strip()
+    name = input("Enter the name of the cat to delete: ").strip()
     if not name:
-        print("Ім’я не може бути порожнім.")
+        print("Name cannot be empty.")
         return
     result = collection.delete_one(
         {"name": {"$regex": f"^{name}$", "$options": "i"}})
     if result.deleted_count:
-        print("Кота видалено.")
+        print("Cat deleted.")
     else:
-        print("Кота не знайдено.")
+        print("No cat found.")
 
 
 def delete_all_cats():
     confirm = input(
-        "Ви впевнені, що хочете видалити всіх котів? (yes/no): ").strip()
+        "Are you sure you want to delete all cats? (yes/no): ").strip()
     if confirm.lower() == 'yes':
         result = collection.delete_many({})
-        print(f"Видалено {result.deleted_count} записів.")
+        print(f"Deleted {result.deleted_count} cats.")
     else:
-        print("Операція скасована.")
+        print("Operation canceled.")
 
 
 def insert_sample_data():
-    """Опціональна функція для вставки початкових даних"""
     sample = {
         "name": "Barsik",
         "age": 3,
-        "features": ["ходить в капці", "дає себе гладити", "рудий"]
+        "features": ["walks in slippers", "lets you pet", "ginger"]
     }
-    collection.insert_one(sample)
-    print("Зразок додано.")
+    try:
+        collection.insert_one(sample)
+        print("Sample cat added.")
+    except DuplicateKeyError:
+        print("Кіт з таким ім’ям уже існує.")
 
 
 def generate_fake_cats():
-    """Генерує випадкових котів та додає їх у базу"""
     try:
-        count = int(input("Скільки випадкових котів згенерувати?: ").strip())
+        count = int(input("How many random cats to generate?: ").strip())
         if count <= 0:
-            print("Кількість повинна бути більше нуля.")
+            print("⚠️ Number must be greater than zero.")
             return
     except ValueError:
-        print("Введіть правильне число.")
+        print("⚠️ Please enter a valid number.")
         return
 
-    fake_cats = []
-    for _ in range(count):
+    added = 0
+    attempts = 0
+    max_attempts = count * 5  # Щоб уникнути зациклення через колізії, спробуйте інше ім’я
+
+    while added < count and attempts < max_attempts:
+        attempts += 1
+        name = faker.first_name()
+        if collection.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}}):
+            continue  # имя уже существует
+
         cat = {
-            "name": faker.first_name(),
+            "name": name,
             "age": random.randint(1, 20),
             "features": random.sample(FEATURE_POOL, k=random.randint(2, 4))
         }
-        fake_cats.append(cat)
 
-    result = collection.insert_many(fake_cats)
-    print(f"Додано {len(result.inserted_ids)} випадкових котів.")
+        try:
+            collection.insert_one(cat)
+            added += 1
+        except DuplicateKeyError:
+            continue  # защита на случай гонки
+
+    print(f"{added} unique fake cats added.")
+    if added < count:
+        print(
+            f"Only {added} out of {count} cats added due to name duplicates.")
+
+
+def add_new_cat():
+    name = input("Enter cat's name: ").strip()
+    if not name:
+        print("Name cannot be empty.")
+        return
+
+    age_str = input("Enter cat's age: ").strip()
+    if not age_str.isdigit() or not (0 < int(age_str) < 50):
+        print("Age must be a number between 1 and 49.")
+        return
+    age = int(age_str)
+
+    features_input = input("Enter features (comma-separated): ").strip()
+    features = [f.strip() for f in features_input.split(",") if f.strip()]
+    if not features:
+        print("At least one feature must be provided.")
+        return
+
+    new_cat = {
+        "name": name,
+        "age": age,
+        "features": features
+    }
+
+    try:
+        collection.insert_one(new_cat)
+        print("New cat added.")
+    except DuplicateKeyError:
+        print("A cat with this name already exists.")
 
 
 def main_menu():
+    initdb()
     while True:
-        print("\n===== 🐾 Меню 🐾 =====")
-        print("1. Показати всіх котів")
-        print("2. Знайти кота за ім’ям")
-        print("3. Оновити вік кота")
-        print("4. Додати характеристику коту")
-        print("5. Видалити кота за ім’ям")
-        print("6. Видалити всіх котів")
-        print("7. Додати зразок")
-        print("8. Згенерувати випадкових котів")
-        print("0. Вийти")
-        choice = input("Ваш вибір: ").strip()
+        print("\n===== 🐾 Menu 🐾 =====")
+        print("1. Show all cats")
+        print("2. Find cat by name")
+        print("3. Update cat's age")
+        print("4. Add feature to cat")
+        print("5. Delete cat by name")
+        print("6. Delete all cats")
+        print("7. Add sample cat")
+        print("8. Generate random cats")
+        print("9. Add new cat")
+        print("0. Exit")
+        choice = input("Your choice: ").strip()
 
         if choice == '1':
-            print_all_cats()
+            safe_run(print_all_cats)
         elif choice == '2':
-            find_cat_by_name()
+            safe_run(find_cat_by_name)
         elif choice == '3':
-            update_cat_age()
+            safe_run(update_cat_age)
         elif choice == '4':
-            add_feature_to_cat()
+            safe_run(add_feature_to_cat)
         elif choice == '5':
-            delete_cat_by_name()
+            safe_run(delete_cat_by_name)
         elif choice == '6':
-            delete_all_cats()
+            safe_run(delete_all_cats)
         elif choice == '7':
-            insert_sample_data()
+            safe_run(insert_sample_data)
         elif choice == '8':
-            generate_fake_cats()
+            safe_run(generate_fake_cats)
+        elif choice == '9':
+            safe_run(add_new_cat)
         elif choice == '0':
-            print("До побачення!")
+            print("Goodbye!")
             break
         else:
-            print("Невірний вибір. Спробуйте ще раз.")
+            print("Invalid choice. Try again.")
 
 
 if __name__ == "__main__":
